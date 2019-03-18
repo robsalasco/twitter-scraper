@@ -8,7 +8,7 @@ session = HTMLSession()
 def get_tweets(user, pages=25):
     """Gets tweets for a given user, via the Twitter frontend API."""
 
-    url = f'https://twitter.com/i/profiles/show/{user}/timeline/tweets?include_available_features=1&include_entities=1&include_new_items_bar=true'
+    url = 'https://twitter.com/i/search/timeline?f=tweets&q=%20from%3A{}&src=typd&max_position={}'
     headers = {
         'Accept': 'application/json, text/javascript, */*; q=0.01',
         'Referer': f'https://twitter.com/{user}',
@@ -19,15 +19,20 @@ def get_tweets(user, pages=25):
     }
 
     def gen_tweets(pages):
-        r = session.get(url, headers=headers)
-
+        position = ' '
+        r = session.get(url.format(user, position), headers=headers)
+        
         while pages > 0:
-            try:
-                html = HTML(html=r.json()['items_html'],
+            if r.json()['has_more_items'] == True:
+                try:
+                    html = HTML(html=r.json()['items_html'],
                             url='bunk', default_encoding='utf-8')
-            except KeyError:
-                raise ValueError(
-                    f'Oops! Either "{user}" does not exist or is private.')
+                except KeyError:
+                    raise ValueError(
+                        f'Oops! Either "{user}" does not exist or is private.')
+            else:
+                print("No more items!")
+                break
 
             comma = ","
             dot = "."
@@ -102,14 +107,17 @@ def get_tweets(user, pages=25):
                     }
                 })
 
-            last_tweet = html.find('.stream-item')[-1].attrs['data-item-id']
+            position = str(r.json()['min_position'])
+            next_url = url.format(user, position)
 
             for tweet in tweets:
                 if tweet:
                     tweet['text'] = re.sub('http', ' http', tweet['text'], 1)
                     yield tweet
 
-            r = session.get(url, params={'max_position': last_tweet}, headers=headers)
+            r = session.get(
+                next_url, headers = headers)
+            
             pages += -1
 
     yield from gen_tweets(pages)
